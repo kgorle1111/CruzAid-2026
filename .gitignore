@@ -1,0 +1,11 @@
+# Ignore virtual environment
+venv/
+.idea/
+__pycache__/
+
+# Ignore compiled files
+*.pyc
+
+# Ignore SECRETS (Very Important)
+.env
+ds_store
