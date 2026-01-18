@@ -16,8 +16,7 @@ client = OpenAI(
 )
 
 # --- DATABASE CONNECTION (FORCED) ---
-# ⚠️ ACTION REQUIRED: Paste your teammate's long link inside the quotes below!
-uri = "mongodb+srv://nikhilarambothula_db_user:CruzAid2026@cluster0.4dsz38r.mongodb.net/?appName=Cluster0"
+uri = os.environ.get("MONGO_URI")
 
 try:
     # We use the 'uri' variable directly to bypass environment issues
