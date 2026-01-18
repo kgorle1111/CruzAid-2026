@@ -31,6 +31,7 @@ except Exception as e:
 
 
 # --- AI FUNCTION ---
+# --- IMPROVED AI FUNCTION ---
 def ask_gemini(user_text):
     try:
         completion = client.chat.completions.create(
@@ -43,15 +44,20 @@ def ask_gemini(user_text):
                 {
                     "role": "user",
                     "content": f"""
-                    You are a medical triage sorter.
+                    You are a medical triage router. 
+                    Classify the input into EXACTLY ONE of these categories: 
+                    ['sexual', 'mental', 'dental', 'emergency', 'student']
+
+                    RULES:
+                    - "sexual": pregnancy, test, protection, condoms, std, birth control
+                    - "mental": sad, depressed, suicide, anxiety, stress, unhappy, feelings
+                    - "dental": tooth, gum, mouth, cavity, pain in jaw
+                    - "emergency": broken, blood, dying, breathing, chest pain, car crash, accident
+                    - "student": fever, flu, cold, headache, cough, sick, nausea, general checkup
+
                     Input: "{user_text}"
 
-                    Rules:
-                    - If mentions tooth, gum, mouth -> return 'dental'
-                    - If mentions fever, flu, cold, headache -> return 'student'
-                    - If mentions blood, broken, dying, breathing -> return 'emergency'
-
-                    Return ONLY the single category word.
+                    Return ONLY the category word. Do not add punctuation.
                     """
                 }
             ]
@@ -59,7 +65,7 @@ def ask_gemini(user_text):
         return completion.choices[0].message.content.strip().lower()
     except Exception as e:
         print(f"AI Error: {e}")
-        return "general"
+        return "student"  # Default fallback
 
 
 # --- THE SERVER ---
