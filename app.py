@@ -1,10 +1,10 @@
 import os
 import certifi
-from dotenv import load_dotenv
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
 from openai import OpenAI
 from pymongo import MongoClient
+from dotenv import load_dotenv
 
 app = Flask(__name__)
 load_dotenv()
@@ -15,19 +15,22 @@ client = OpenAI(
     api_key=os.environ.get("OPENROUTER_API_KEY"),
 )
 
-# --- DATABASE CONNECTION (NEW) ---
-# This connects to the cloud database using the link in your .env file
+# --- DATABASE CONNECTION (FORCED) ---
+# ⚠️ ACTION REQUIRED: Paste your teammate's long link inside the quotes below!
+uri = "mongodb+srv://nikhilarambothula_db_user:CruzAid2026@cluster0.4dsz38r.mongodb.net/?appName=Cluster0"
+
 try:
-    mongo_client = MongoClient(os.environ.get("MONGO_URI"), tlsCAFile=certifi.where())
-    db = mongo_client["CruzAidDB"]  # Make sure your teammate named the DB 'CruzAidDB'
-    collection = db["resources"]  # Make sure the collection is named 'resources'
-    print("✅ Connected to MongoDB!")
+    # We use the 'uri' variable directly to bypass environment issues
+    mongo_client = MongoClient(uri, tlsCAFile=certifi.where())
+    db = mongo_client["CruzAidDB"]
+    collection = db["resources"]
+    print("✅ Connected to MongoDB Cloud!")
 except Exception as e:
     print(f"❌ Database Error: {e}")
     collection = None
 
 
-# --- AI FUNCTION (UNCHANGED) ---
+# --- AI FUNCTION ---
 def ask_gemini(user_text):
     try:
         completion = client.chat.completions.create(
@@ -35,7 +38,7 @@ def ask_gemini(user_text):
                 "HTTP-Referer": "http://localhost:5000",
                 "X-Title": "CruzAid Hackathon",
             },
-            model="google/gemini-2.5-flash-lite",  # Your working model
+            model="google/gemini-2.5-flash-lite",
             messages=[
                 {
                     "role": "user",
@@ -68,21 +71,24 @@ def sms_reply():
     category = ask_gemini(user_text)
     print(f"🧠 AI Category: {category}")
 
-    # 2. Search MongoDB (NEW)
+    # 2. Search MongoDB
     response_msg = ""
 
     if collection is not None:
-        # Look for a document where 'tags' includes the category
-        # Example Data in DB: {"name": "UCSC Health", "phone": "555-5555", "tags": ["student", "fever"]}
-        result = collection.find_one({"tags": category})
+        try:
+            # Look for a document where 'tags' includes the category
+            result = collection.find_one({"tags": category})
 
-        if result:
-            response_msg = f"CruzAid: Based on '{category}', we recommend: {result['name']}. Call: {result['phone']} ({result.get('address', 'Santa Cruz')})"
-        else:
-            # Database works, but no match found
+            if result:
+                response_msg = f"CruzAid: Based on '{category}', we recommend: {result['name']}. Call: {result['phone']} ({result.get('address', 'Santa Cruz')})"
+            else:
+                # Database connected, but no match found
+                response_msg = f"CruzAid: Based on '{category}', please contact UCSC Student Health at 831-459-2211."
+        except Exception as e:
+            print(f"⚠️ Search Error: {e}")
             response_msg = f"CruzAid: Based on '{category}', please contact UCSC Student Health at 831-459-2211."
     else:
-        # Database failed to connect, use backup
+        # Database failed to connect
         response_msg = "CruzAid (Offline Mode): Please call 911 for emergencies or 831-459-2211 for Student Health."
 
     # 3. Send Reply
