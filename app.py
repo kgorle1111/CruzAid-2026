@@ -1,32 +1,33 @@
 import os
+import certifi
+from dotenv import load_dotenv
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
 from openai import OpenAI
-from dotenv import load_dotenv
+from pymongo import MongoClient
+
+app = Flask(__name__)
+load_dotenv()
 
 # --- CONFIGURATION ---
-load_dotenv()
-app = Flask(__name__)
-
-# --- AI SETUP (OpenRouter/Gemini) ---
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
-    api_key=os.getenv("OPENROUTER_API_KEY"),
+    api_key=os.environ.get("OPENROUTER_API_KEY"),
 )
 
-# --- DUMMY DATABASE ---
-LOCAL_RESOURCES = [
-    {"name": "Dientes Community Dental", "tags": ["dental", "tooth", "pain"], "phone": "831-464-5409",
-     "address": "1830 Commercial Way"},
-    {"name": "UCSC Student Health", "tags": ["sick", "doctor", "fever", "student"], "phone": "831-459-2211",
-     "address": "UC Santa Cruz"},
-    {"name": "Dominican Hospital ER", "tags": ["emergency", "dying", "broken", "blood"], "phone": "831-462-7700",
-     "address": "1555 Soquel Dr"},
-    {"name": "Planned Parenthood", "tags": ["sexual", "pregnancy", "testing"], "phone": "831-426-5550",
-     "address": "1119 Pacific Ave"}
-]
+# --- DATABASE CONNECTION (NEW) ---
+# This connects to the cloud database using the link in your .env file
+try:
+    mongo_client = MongoClient(os.environ.get("MONGO_URI"), tlsCAFile=certifi.where())
+    db = mongo_client["CruzAidDB"]  # Make sure your teammate named the DB 'CruzAidDB'
+    collection = db["resources"]  # Make sure the collection is named 'resources'
+    print("✅ Connected to MongoDB!")
+except Exception as e:
+    print(f"❌ Database Error: {e}")
+    collection = None
 
 
+# --- AI FUNCTION (UNCHANGED) ---
 def ask_gemini(user_text):
     try:
         completion = client.chat.completions.create(
@@ -34,19 +35,21 @@ def ask_gemini(user_text):
                 "HTTP-Referer": "http://localhost:5000",
                 "X-Title": "CruzAid Hackathon",
             },
-            model="google/gemini-2.5-flash-lite",
+            model="google/gemini-2.5-flash-lite",  # Your working model
             messages=[
                 {
                     "role": "user",
-                    "content": f""" You are a medical sorter. Input text: "{user_text}"
-        
-        Rules:
-        - If it mentions 'tooth', 'gum', 'mouth' -> return 'dental'
-        - If it mentions 'fever', 'headache', 'cold', 'flu' -> return 'student'
-        - If it mentions 'blood', 'broken', 'emergency' -> return 'emergency'
-        
-        Return ONLY the single word. Do not write a sentence.
-        """
+                    "content": f"""
+                    You are a medical triage sorter.
+                    Input: "{user_text}"
+
+                    Rules:
+                    - If mentions tooth, gum, mouth -> return 'dental'
+                    - If mentions fever, flu, cold, headache -> return 'student'
+                    - If mentions blood, broken, dying, breathing -> return 'emergency'
+
+                    Return ONLY the single category word.
+                    """
                 }
             ]
         )
@@ -56,29 +59,37 @@ def ask_gemini(user_text):
         return "general"
 
 
-@app.route('/sms', methods=['POST'])
-def bot():
-    # 1. Get the message (Twilio uses 'Body', not 'Text')
-    incoming_msg = request.values.get('Body', '').lower()
-    sender = request.values.get('From', '')
-    print(f"📩 Received from {sender}: {incoming_msg}")
+# --- THE SERVER ---
+@app.route("/sms", methods=['POST'])
+def sms_reply():
+    user_text = request.form.get('Body')
 
-    # 2. Ask AI
-    category = ask_gemini(incoming_msg)
+    # 1. Ask AI for Category
+    category = ask_gemini(user_text)
     print(f"🧠 AI Category: {category}")
 
-    # 3. Database Lookup
-    match = next((r for r in LOCAL_RESOURCES if category in r['tags']), LOCAL_RESOURCES[1])
+    # 2. Search MongoDB (NEW)
+    response_msg = ""
 
-    # 4. Create the Reply
-    response_text = f"CruzAid: Based on '{category}', we recommend: {match['name']}. Call: {match['phone']} ({match['address']})"
+    if collection is not None:
+        # Look for a document where 'tags' includes the category
+        # Example Data in DB: {"name": "UCSC Health", "phone": "555-5555", "tags": ["student", "fever"]}
+        result = collection.find_one({"tags": category})
 
-    # 5. Send back TwiML (Twilio's XML format)
+        if result:
+            response_msg = f"CruzAid: Based on '{category}', we recommend: {result['name']}. Call: {result['phone']} ({result.get('address', 'Santa Cruz')})"
+        else:
+            # Database works, but no match found
+            response_msg = f"CruzAid: Based on '{category}', please contact UCSC Student Health at 831-459-2211."
+    else:
+        # Database failed to connect, use backup
+        response_msg = "CruzAid (Offline Mode): Please call 911 for emergencies or 831-459-2211 for Student Health."
+
+    # 3. Send Reply
     resp = MessagingResponse()
-    resp.message(response_text)
-
+    resp.message(response_msg)
     return str(resp)
 
 
-if __name__ == '__main__':
-    app.run(port=5000, debug=True)
+if __name__ == "__main__":
+    app.run(debug=True, port=5000)
