@@ -82,13 +82,25 @@ def sms_reply():
 
     if collection is not None:
         try:
-            # Look for a document where 'tags' includes the category
-            result = collection.find_one({"tags": category})
+            # 1. Find up to 3 matches
+            cursor = collection.find({"tags": category}).limit(3)
+            results = list(cursor)
 
-            if result:
-                response_msg = f"CruzAid: Based on '{category}', we recommend: {result['name']}. Call: {result['phone']} ({result.get('address', 'Santa Cruz')})"
+            if results:
+                response_msg = f"CruzAid: Found {len(results)} options for '{category}':\n"
+
+                for place in results:
+                    # Get the address safely
+                    address_text = place.get('address', 'Santa Cruz, CA')
+
+                    # Create the Map Link (SAFE VERSION)
+                    # We use urllib to make sure spaces don't break the link
+                    safe_address = address_text.replace(" ", "+")
+                    map_url = f"https://www.google.com/maps/search/?api=1&query={safe_address}"
+
+                    # Build the message
+                    response_msg += f"\n🏥 *{place['name']}*\n📞 {place['phone']}\n📍 {address_text}\n🔗 {map_url}\n"
             else:
-                # Database connected, but no match found
                 response_msg = f"CruzAid: Based on '{category}', please contact UCSC Student Health at 831-459-2211."
         except Exception as e:
             print(f"⚠️ Search Error: {e}")
