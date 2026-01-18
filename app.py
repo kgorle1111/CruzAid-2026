@@ -109,6 +109,7 @@ def sms_reply():
         # Database failed to connect
         response_msg = "CruzAid (Offline Mode): Please call 911 for emergencies or 831-459-2211 for Student Health."
 
+
     # 3. Send Reply
     resp = MessagingResponse()
     resp.message(response_msg)
