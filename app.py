@@ -1,19 +1,56 @@
 import os
+from functools import wraps
 import certifi
-from flask import Flask, request
+from flask import Flask, request, abort
+from flask_limiter import Limiter
 from twilio.twiml.messaging_response import MessagingResponse
+from twilio.request_validator import RequestValidator
 from openai import OpenAI
 from pymongo import MongoClient
 from dotenv import load_dotenv
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 app = Flask(__name__)
+# Trust the proxy's forwarded scheme/host (ngrok, Render, etc.) so request.url
+# reports the real https URL Twilio signed. Without this, signature checks fail.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 load_dotenv()
 
-# --- CONFIGURATION ---
-client = OpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    api_key=os.environ.get("OPENROUTER_API_KEY"),
+
+# Reject any request to /sms that isn't a genuine Twilio call. Twilio signs each
+# webhook with the account auth token; we recompute the signature and compare.
+# Without this, anyone who finds the URL can burn our LLM/DB quota.
+# If TWILIO_AUTH_TOKEN is unset we skip the check (local dev / tests) rather than
+# fail closed, so an unconfigured deploy is open by design — set the token in prod.
+def validate_twilio_request(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        token = os.environ.get("TWILIO_AUTH_TOKEN")
+        if token:
+            validator = RequestValidator(token)
+            signature = request.headers.get("X-Twilio-Signature", "")
+            if not validator.validate(request.url, request.form, signature):
+                abort(403)
+        return f(*args, **kwargs)
+    return wrapper
+
+# Rate limit per sender phone number (all requests share Twilio's IPs, so
+# keying on the "From" number throttles a spammer without throttling everyone).
+# Set RATELIMIT_STORAGE_URI (e.g. redis://host:6379) to share limits across
+# gunicorn workers/instances. Unset falls back to per-process in-memory, which
+# is only correct for a single worker.
+limiter = Limiter(
+    key_func=lambda: request.form.get("From", request.remote_addr),
+    app=app,
+    storage_uri=os.environ.get("RATELIMIT_STORAGE_URI", "memory://"),
 )
+
+# --- CONFIGURATION ---
+def get_ai_client():
+    return OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=os.environ.get("OPENROUTER_API_KEY"),
+    )
 
 # --- DATABASE CONNECTION (FORCED) ---
 uri = os.environ.get("MONGO_URI")
@@ -29,11 +66,15 @@ except Exception as e:
     collection = None
 
 
+# Categories the triage router can emit. Every one MUST have a matching
+# resource in setup_data.py, or users silently fall through to the default.
+CATEGORIES = ["sexual", "mental", "dental", "emergency", "student"]
+
+
 # --- AI FUNCTION ---
-# --- IMPROVED AI FUNCTION ---
 def ask_gemini(user_text):
     try:
-        completion = client.chat.completions.create(
+        completion = get_ai_client().chat.completions.create(
             extra_headers={
                 "HTTP-Referer": "http://localhost:5000",
                 "X-Title": "CruzAid Hackathon",
@@ -44,8 +85,8 @@ def ask_gemini(user_text):
                     "role": "user",
                     "content": f"""
                     You are a medical triage router. 
-                    Classify the input into EXACTLY ONE of these categories: 
-                    ['sexual', 'mental', 'dental', 'emergency', 'student']
+                    Classify the input into EXACTLY ONE of these categories:
+                    {CATEGORIES}
 
                     RULES:
                     - "sexual": pregnancy, test, protection, condoms, std, birth control
@@ -69,6 +110,8 @@ def ask_gemini(user_text):
 
 # --- THE SERVER ---
 @app.route("/sms", methods=['POST'])
+@limiter.limit("10 per minute")
+@validate_twilio_request
 def sms_reply():
     user_text = request.form.get('Body')
 

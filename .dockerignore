@@ -1,0 +1,9 @@
+.git
+.venv
+venv
+__pycache__
+*.pyc
+.env
+CRUZHACKS_2026_Materials
+.idea
+.DS_Store

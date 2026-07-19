@@ -1,14 +1,8 @@
+import os
+
 import certifi
+from dotenv import load_dotenv
 from pymongo import MongoClient
-
-uri = os.environ.get("MONGO_URI")
-client = MongoClient(uri, tlsCAFile=certifi.where())
-
-db = client["CruzAidDB"]
-collection = db["resources"]
-
-# We wipe the old data first so we don't get duplicates
-collection.delete_many({})
 
 data = [
     {
@@ -85,5 +79,16 @@ data = [
     }
 ]
 
-collection.insert_many(data)
-print(f"✅ SUCCESS: {len(data)} resources uploaded to MongoDB Cloud!")
+
+def seed():
+    load_dotenv()
+    uri = os.environ.get("MONGO_URI")
+    client = MongoClient(uri, tlsCAFile=certifi.where())
+    collection = client["CruzAidDB"]["resources"]
+    collection.delete_many({})  # wipe first so we don't get duplicates
+    collection.insert_many(data)
+    print(f"✅ SUCCESS: {len(data)} resources uploaded to MongoDB Cloud!")
+
+
+if __name__ == "__main__":
+    seed()

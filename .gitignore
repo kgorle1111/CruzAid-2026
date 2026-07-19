@@ -1,5 +1,6 @@
 # Ignore virtual environment
 venv/
+.venv/
 .idea/
 __pycache__/
 
@@ -8,4 +9,4 @@ __pycache__/
 
 # Ignore SECRETS (Very Important)
 .env
-ds_store
+.DS_Store
