@@ -2,6 +2,7 @@
 name = "cruzaid"
 version = "0.1.0"
 description = "SMS medical-triage bot routing Santa Cruz students to health resources"
+package-mode = false
 authors = ["kannishk1111 <kannishk13@gmail.com>"]
 readme = "README.md"
 
