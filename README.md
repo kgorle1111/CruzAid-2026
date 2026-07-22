@@ -1,10 +1,13 @@
 # CruzAid
 
+[![CI](https://github.com/kgorle1111/CruzAid-2026/actions/workflows/ci.yml/badge.svg)](https://github.com/kgorle1111/CruzAid-2026/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+**Stack:** Python · Flask · Twilio · Gemini (via OpenRouter) · MongoDB · flask-limiter
+
 A student in Santa Cruz texts a symptom to a phone number. A few seconds later they get back the nearest relevant health resource: name, phone, address, and a Google Maps link. No app to install, no account, works on any phone that can send a text.
 
 Built at CruzHacks 2026.
-
-![CI](https://github.com/kgorle1111/CruzAid-2026/actions/workflows/ci.yml/badge.svg)
 
 ## Why SMS
 

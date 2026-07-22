@@ -3,7 +3,8 @@ name = "cruzaid"
 version = "0.1.0"
 description = "SMS medical-triage bot routing Santa Cruz students to health resources"
 package-mode = false
-authors = ["kannishk1111 <kannishk13@gmail.com>"]
+authors = ["Kannishk Naidu Gorle <235177965+kgorle1111@users.noreply.github.com>"]
+license = "MIT"
 readme = "README.md"
 
 [tool.poetry.dependencies]
